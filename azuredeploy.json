@@ -1,0 +1,168 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "linstore101Type": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_ZRS",
+        "Standard_GRS",
+        "Standard_RAGRS",
+        "Premium_LRS"
+      ]
+    },
+    "linuxvmName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "linuxvmAdminUserName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "linuxvmAdminPassword": {
+      "type": "securestring"
+    },
+    "linuxvmUbuntuOSVersion": {
+      "type": "string",
+      "defaultValue": "14.04.2-LTS",
+      "allowedValues": [
+        "12.04.5-LTS",
+        "14.04.2-LTS"
+      ]
+    }},
+  "variables": {
+    "linstore101Name": "[concat('linstore101', uniqueString(resourceGroup().id))]",
+    "lin-vnetPrefix": "10.0.0.0/16",
+    "lin-vnetSubnet1Name": "Subnet-1",
+    "lin-vnetSubnet1Prefix": "10.0.0.0/24",
+    "lin-vnetSubnet2Name": "Subnet-2",
+    "lin-vnetSubnet2Prefix": "10.0.1.0/24",
+    "linuxvmImagePublisher": "Canonical",
+    "linuxvmImageOffer": "UbuntuServer",
+    "linuxvmOSDiskName": "linuxvmOSDisk",
+    "linuxvmVmSize": "Standard_D2_v2",
+    "linuxvmVnetID": "[resourceId('Microsoft.Network/virtualNetworks', 'lin-vnet')]",
+    "linuxvmSubnetRef": "[concat(variables('linuxvmVnetID'), '/subnets/', variables('lin-vnetSubnet1Name'))]",
+    "linuxvmStorageAccountContainerName": "vhds",
+    "linuxvmNicName": "[concat(parameters('linuxvmName'), 'NetworkInterface')]"},
+  "resources": [
+    {
+      "name": "[variables('linstore101Name')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-01-01",
+      "sku": {
+        "name": "[parameters('linstore101Type')]"
+      },
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "linstore101"
+      },
+      "kind": "Storage"
+    },
+    {
+      "name": "lin-vnet",
+      "type": "Microsoft.Network/virtualNetworks",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "lin-vnet"
+      },
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('lin-vnetPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('lin-vnetSubnet1Name')]",
+            "properties": {
+              "addressPrefix": "[variables('lin-vnetSubnet1Prefix')]"
+            }
+          },
+          {
+            "name": "[variables('lin-vnetSubnet2Name')]",
+            "properties": {
+              "addressPrefix": "[variables('lin-vnetSubnet2Prefix')]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[variables('linuxvmNicName')]",
+      "type": "Microsoft.Network/networkInterfaces",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2016-03-30",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', 'lin-vnet')]"
+      ],
+      "tags": {
+        "displayName": "linuxvmNic"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('linuxvmSubnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[parameters('linuxvmName')]",
+      "type": "Microsoft.Compute/virtualMachines",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2015-06-15",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('linstore101Name'))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('linuxvmNicName'))]"
+      ],
+      "tags": {
+        "displayName": "linuxvm"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('linuxvmVmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[parameters('linuxvmName')]",
+          "adminUsername": "[parameters('linuxvmAdminUsername')]",
+          "adminPassword": "[parameters('linuxvmAdminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[variables('linuxvmImagePublisher')]",
+            "offer": "[variables('linuxvmImageOffer')]",
+            "sku": "[parameters('linuxvmUbuntuOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "linuxvmOSDisk",
+            "vhd": {
+              "uri": "[concat(reference(resourceId('Microsoft.Storage/storageAccounts', variables('linstore101Name')), '2016-01-01').primaryEndpoints.blob, variables('linuxvmStorageAccountContainerName'), '/', variables('linuxvmOSDiskName'), '.vhd')]"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('linuxvmNicName'))]"
+            }
+          ]
+        }
+      }
+    }],
+  "outputs": {}
+}
